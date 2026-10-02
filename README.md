@@ -9,7 +9,8 @@ Next.js 16 (App Router, Turbopack) · TypeScript · Tailwind CSS 4 · sans base 
 
 - Pages : accueil, services, tarifs, contact, réservation, 8 pages locales `/vtc/[slug]`, mentions légales, CGV,
   confidentialité, `sitemap.xml`, `robots.txt`, image Open Graph générée, favicon.
-- **Réservation en 3 étapes** (`src/components/BookingForm.tsx`) : trajet → véhicule → coordonnées.
+- **Réservation en 3 étapes** (`src/components/BookingForm.tsx`) : trajet → véhicule → coordonnées, en
+  **aller simple**, **aller-retour** (remise sur l'ensemble) ou **mise à disposition à l'heure**.
 - **Prix calculé côté serveur** (`src/lib/pricing.ts`, `src/lib/booking.ts`) : forfaits entre zones (Paris, aéroports,
   La Défense, Versailles, Disneyland), sinon prise en charge + km + minutes avec minimum de course ; majorations de
   nuit et de dimanche/jours fériés ; options ; second véhicule automatique au-delà de 4 passagers ou 4 bagages.
@@ -17,7 +18,8 @@ Next.js 16 (App Router, Turbopack) · TypeScript · Tailwind CSS 4 · sans base 
   est indisponible.
 - **Paiement Stripe Checkout** (acompte de 30 % par défaut, ou totalité) et webhook `/api/stripe/webhook` qui envoie
   les e-mails une fois le paiement confirmé. Sans clé Stripe, la réservation est confirmée par e-mail et réglée à bord.
-- **E-mails SMTP** avec nodemailer (`src/lib/mail.ts`). Sans SMTP, les e-mails sont simulés dans la console serveur.
+- **E-mails SMTP** avec nodemailer (`src/lib/mail.ts`), avec **fichier calendrier `.ics`** joint (client et
+  chauffeur). Sans SMTP, les e-mails sont simulés dans la console serveur.
 - Anti-abus : validation zod, limitation de débit en mémoire, champ pot de miel.
 - `siteConfig.provisoire = true` → site fermé aux moteurs de recherche (robots + meta noindex).
 

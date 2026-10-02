@@ -7,11 +7,17 @@ import { pricingConfig, type OptionId, type VehicleId } from '@/config/pricing'
 import { siteConfig } from '@/config/site'
 import { formatDateTimeFr, formatDuration, formatKm, formatPrice, todayParis } from '@/lib/format'
 import type { Place, RouteResult } from '@/lib/geo'
-import type { Quote } from '@/lib/pricing'
+import type { Quote, TripMode } from '@/lib/pricing'
 
 type Step = 1 | 2 | 3
 
-type QuoteResponse = { quote: Quote; route: RouteResult; online: boolean }
+type QuoteResponse = { quote: Quote; route: RouteResult | null; online: boolean }
+
+const MODES: { id: TripMode; label: string; hint: string }[] = [
+  { id: 'oneway', label: 'Aller simple', hint: 'Un trajet, prix fixé à l’avance' },
+  { id: 'return', label: 'Aller-retour', hint: `−${pricingConfig.returnTripDiscountPercent} % sur l’ensemble` },
+  { id: 'hourly', label: 'Mise à disposition', hint: `${pricingConfig.hourly.pricePerHour} €/h, ${pricingConfig.hourly.minimumHours} h minimum` },
+]
 type BookingResponse =
   | { mode: 'stripe'; url: string; reference: string }
   | { mode: 'request'; reference: string; simulated?: boolean }
@@ -40,10 +46,14 @@ export function BookingForm({ compact = false }: { compact?: boolean }) {
   const [step, setStep] = useState<Step>(1)
 
   // Étape 1 — trajet
+  const [mode, setMode] = useState<TripMode>('oneway')
   const [from, setFrom] = useState<Place | null>(null)
   const [to, setTo] = useState<Place | null>(null)
   const [date, setDate] = useState('')
   const [time, setTime] = useState('')
+  const [returnDate, setReturnDate] = useState('')
+  const [returnTime, setReturnTime] = useState('')
+  const [hours, setHours] = useState<number>(pricingConfig.hourly.minimumHours)
   const [passengers, setPassengers] = useState(2)
   const [luggage, setLuggage] = useState(2)
   const [options, setOptions] = useState<Record<OptionId, number>>(
@@ -70,28 +80,43 @@ export function BookingForm({ compact = false }: { compact?: boolean }) {
   const [submitting, setSubmitting] = useState(false)
   const [submitError, setSubmitError] = useState<string | null>(null)
 
-  const tripPayload = (vehicle: VehicleId = vehicleId) =>
-    from && to
-      ? {
-          from: { label: from.label, lon: from.lon, lat: from.lat, city: from.city, postcode: from.postcode },
-          to: { label: to.label, lon: to.lon, lat: to.lat, city: to.city, postcode: to.postcode },
-          date,
-          time,
-          passengers,
-          luggage,
-          vehicleId: vehicle,
-          options,
-        }
-      : null
+  const toPlace = (p: Place) => ({ label: p.label, lon: p.lon, lat: p.lat, city: p.city, postcode: p.postcode })
+
+  const tripPayload = (vehicle: VehicleId = vehicleId) => {
+    if (!from) return null
+    if (mode !== 'hourly' && !to) return null
+    return {
+      mode,
+      from: toPlace(from),
+      to: mode !== 'hourly' && to ? toPlace(to) : undefined,
+      date,
+      time,
+      returnDate: mode === 'return' ? returnDate : undefined,
+      returnTime: mode === 'return' ? returnTime : undefined,
+      hours: mode === 'hourly' ? hours : undefined,
+      passengers,
+      luggage,
+      vehicleId: vehicle,
+      options,
+    }
+  }
 
   async function requestQuote(vehicle: VehicleId = vehicleId): Promise<boolean> {
     const payload = tripPayload(vehicle)
     if (!payload) {
-      setQuoteError('Sélectionnez une adresse de départ et d’arrivée dans la liste proposée.')
+      setQuoteError(
+        mode === 'hourly'
+          ? 'Sélectionnez une adresse de prise en charge dans la liste proposée.'
+          : 'Sélectionnez une adresse de départ et d’arrivée dans la liste proposée.',
+      )
       return false
     }
     if (!date || !time) {
       setQuoteError('Indiquez la date et l’heure de prise en charge.')
+      return false
+    }
+    if (mode === 'return' && (!returnDate || !returnTime)) {
+      setQuoteError('Indiquez la date et l’heure du retour.')
       return false
     }
     setQuoteLoading(true)
@@ -179,26 +204,69 @@ export function BookingForm({ compact = false }: { compact?: boolean }) {
 
         {step === 1 && (
           <form onSubmit={goToStep2} noValidate className="space-y-5">
+            <div role="radiogroup" aria-label="Type de prestation" className="grid gap-2 sm:grid-cols-3">
+              {MODES.map((m) => {
+                const selected = m.id === mode
+                return (
+                  <button
+                    key={m.id}
+                    type="button"
+                    role="radio"
+                    aria-checked={selected}
+                    onClick={() => {
+                      setMode(m.id)
+                      setQuoteError(null)
+                    }}
+                    className={`rounded-xl border px-4 py-3 text-left transition ${
+                      selected ? 'border-gold/70 bg-gold/10' : 'border-line hover:border-line-strong'
+                    }`}
+                  >
+                    <span className={`block text-sm font-semibold ${selected ? 'text-gold-2' : 'text-cream'}`}>
+                      {m.label}
+                    </span>
+                    <span className="text-mist block text-xs">{m.hint}</span>
+                  </button>
+                )
+              })}
+            </div>
             <div className="grid gap-5 md:grid-cols-2">
               <AddressInput
                 id="from"
-                label="Départ"
+                label={mode === 'hourly' ? 'Prise en charge' : 'Départ'}
                 placeholder="Adresse, gare, aéroport…"
                 value={from}
                 onChange={setFrom}
               />
-              <AddressInput
-                id="to"
-                label="Arrivée"
-                placeholder="Adresse, gare, aéroport…"
-                value={to}
-                onChange={setTo}
-              />
+              {mode === 'hourly' ? (
+                <div>
+                  <label htmlFor="hours" className="label">
+                    Durée
+                  </label>
+                  <select id="hours" className="input" value={hours} onChange={(e) => setHours(Number(e.target.value))}>
+                    {Array.from(
+                      { length: pricingConfig.hourly.maximumHours - pricingConfig.hourly.minimumHours + 1 },
+                      (_, i) => i + pricingConfig.hourly.minimumHours,
+                    ).map((h) => (
+                      <option key={h} value={h}>
+                        {h} heures · {formatPrice(h * pricingConfig.hourly.pricePerHour)}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              ) : (
+                <AddressInput
+                  id="to"
+                  label="Arrivée"
+                  placeholder="Adresse, gare, aéroport…"
+                  value={to}
+                  onChange={setTo}
+                />
+              )}
             </div>
             <div className="grid gap-5 sm:grid-cols-2 md:grid-cols-4">
               <div>
                 <label htmlFor="date" className="label">
-                  Date
+                  {mode === 'return' ? 'Date aller' : 'Date'}
                 </label>
                 <input
                   id="date"
@@ -212,7 +280,7 @@ export function BookingForm({ compact = false }: { compact?: boolean }) {
               </div>
               <div>
                 <label htmlFor="time" className="label">
-                  Heure
+                  {mode === 'return' ? 'Heure aller' : 'Heure'}
                 </label>
                 <input
                   id="time"
@@ -259,6 +327,39 @@ export function BookingForm({ compact = false }: { compact?: boolean }) {
                 </select>
               </div>
             </div>
+
+            {mode === 'return' && (
+              <div className="grid gap-5 sm:grid-cols-2">
+                <div>
+                  <label htmlFor="returnDate" className="label">
+                    Date retour
+                  </label>
+                  <input
+                    id="returnDate"
+                    type="date"
+                    className="input"
+                    min={date || todayParis()}
+                    value={returnDate}
+                    onChange={(e) => setReturnDate(e.target.value)}
+                    required
+                  />
+                </div>
+                <div>
+                  <label htmlFor="returnTime" className="label">
+                    Heure retour
+                  </label>
+                  <input
+                    id="returnTime"
+                    type="time"
+                    className="input"
+                    step={300}
+                    value={returnTime}
+                    onChange={(e) => setReturnTime(e.target.value)}
+                    required
+                  />
+                </div>
+              </div>
+            )}
 
             <fieldset className="grid gap-3 sm:grid-cols-2">
               <legend className="label">Options</legend>
@@ -477,24 +578,39 @@ export function BookingForm({ compact = false }: { compact?: boolean }) {
       {!compact && (
         <aside className="border-line bg-ink-3/60 border-t p-6 sm:p-8 lg:border-t-0 lg:border-l">
           <p className="eyebrow">Votre trajet</p>
-          {quote && from && to ? (
+          {quote && from && (mode === 'hourly' || to) ? (
             <div className="mt-4 space-y-4 text-sm">
+              <p className="text-gold-2 text-xs font-semibold tracking-[0.18em] uppercase">
+                {MODES.find((m) => m.id === quote.mode)?.label}
+                {quote.mode === 'hourly' && quote.hours ? ` · ${quote.hours} h` : ''}
+              </p>
               <div>
-                <p className="text-mist text-xs">Départ</p>
+                <p className="text-mist text-xs">{mode === 'hourly' ? 'Prise en charge' : 'Départ'}</p>
                 <p className="text-cream">{from.label}</p>
               </div>
+              {mode !== 'hourly' && to && (
+                <div>
+                  <p className="text-mist text-xs">Arrivée</p>
+                  <p className="text-cream">{to.label}</p>
+                </div>
+              )}
               <div>
-                <p className="text-mist text-xs">Arrivée</p>
-                <p className="text-cream">{to.label}</p>
-              </div>
-              <div>
-                <p className="text-mist text-xs">Prise en charge</p>
+                <p className="text-mist text-xs">{mode === 'return' ? 'Aller' : 'Prise en charge'}</p>
                 <p className="text-cream">{formatDateTimeFr(date, time)}</p>
               </div>
+              {mode === 'return' && returnDate && returnTime && (
+                <div>
+                  <p className="text-mist text-xs">Retour</p>
+                  <p className="text-cream">{formatDateTimeFr(returnDate, returnTime)}</p>
+                </div>
+              )}
               <p className="text-mist text-xs">
-                {formatKm(quote.distanceKm)} · {formatDuration(quote.durationMin)}
-                {quoteData?.route.source === 'estimation' ? ' (estimation)' : ''} ·{' '}
-                {quote.vehicleCount > 1 ? `${quote.vehicleCount} × ` : ''}
+                {quote.mode === 'hourly'
+                  ? `${formatKm(quote.distanceKm)} compris`
+                  : `${formatKm(quote.distanceKm)} · ${formatDuration(quote.durationMin)}${
+                      quoteData?.route?.source === 'estimation' ? ' (estimation)' : ''
+                    }${quote.mode === 'return' ? ' par sens' : ''}`}{' '}
+                · {quote.vehicleCount > 1 ? `${quote.vehicleCount} × ` : ''}
                 {quote.vehicleName}
               </p>
               <ul className="border-line divide-line divide-y border-y">

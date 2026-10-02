@@ -59,9 +59,22 @@ export default async function ConfirmationPage({ searchParams }: { searchParams:
           )}
           {summary && (
             <dl className="border-line mt-6 space-y-3 border-t pt-6 text-sm">
+              <Row
+                label="Prestation"
+                value={
+                  summary.mode === 'hourly'
+                    ? `Mise à disposition ${summary.hours ?? ''} h`
+                    : summary.mode === 'return'
+                      ? 'Aller-retour'
+                      : 'Aller simple'
+                }
+              />
               <Row label="Prise en charge" value={formatDateTimeFr(summary.date, summary.time)} />
+              {summary.returnDate && summary.returnTime && (
+                <Row label="Retour" value={formatDateTimeFr(summary.returnDate, summary.returnTime)} />
+              )}
               <Row label="Départ" value={summary.from} />
-              <Row label="Arrivée" value={summary.to} />
+              {summary.to && <Row label="Arrivée" value={summary.to} />}
               <Row label="Prix total" value={`${formatPrice(summary.total)} TTC`} />
               {paid && (
                 <Row

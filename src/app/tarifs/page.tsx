@@ -75,6 +75,7 @@ export default function TarifsPage() {
             <Row label="Par kilomètre" value={formatPrice(perKm)} />
             <Row label="Par minute" value={formatPrice(perMinute)} />
             <Row label="Minimum de course" value={formatPrice(minimumFare)} />
+            <Row label="Aller-retour réservé ensemble" value={`−${pricingConfig.returnTripDiscountPercent} %`} />
           </dl>
           <p className="text-mist mt-5 text-xs leading-relaxed">
             Distance et durée estimées sur l’itinéraire réel au moment de la réservation ; le prix est ensuite figé.
@@ -115,12 +116,26 @@ export default function TarifsPage() {
         </div>
       </section>
 
-      <section className="container-x mt-20">
+      <section className="container-x mt-20 grid gap-6 lg:grid-cols-2">
         <div className="card p-8 sm:p-10">
-          <p className="eyebrow">Mise à disposition et longue distance</p>
+          <p className="eyebrow">Mise à disposition</p>
+          <h2 className="mt-3 text-3xl">
+            {formatPrice(pricingConfig.hourly.pricePerHour)} <span className="text-mist text-lg">/ heure</span>
+          </h2>
+          <p className="text-mist mt-4">
+            Minimum {pricingConfig.hourly.minimumHours} h, jusqu’à {pricingConfig.hourly.maximumHours} h en ligne.{' '}
+            {pricingConfig.hourly.includedKmPerHour} km compris par heure ; le chauffeur et le véhicule restent à votre
+            disposition, itinéraire libre. Majorations nuit et dimanche applicables.
+          </p>
+          <Link href="/reservation" className="btn-gold mt-6">
+            Réserver à l’heure
+          </Link>
+        </div>
+        <div className="card p-8 sm:p-10">
+          <p className="eyebrow">Longue distance et événements</p>
           <h2 className="mt-3 text-3xl">Sur devis, en quelques minutes</h2>
-          <p className="text-mist mt-4 max-w-2xl">
-            Journée de rendez-vous, mariage, trajet vers une autre région : appelez le{' '}
+          <p className="text-mist mt-4">
+            Trajet vers une autre région, mariage, navettes d’invités : appelez le{' '}
             <a href={`tel:${siteConfig.phone.e164}`} className="text-gold-2">
               {siteConfig.phone.display}
             </a>{' '}

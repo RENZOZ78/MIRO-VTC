@@ -32,8 +32,23 @@ export type QuoteInput = {
 
 export type QuoteLine = { label: string; amount: number }
 
+export type TripMode = 'oneway' | 'return' | 'hourly'
+
+export type QuoteLeg = {
+  label: string
+  date: string
+  time: string
+  total: number
+  surcharges: { night: boolean; sundayHoliday: boolean }
+}
+
 export type Quote = {
-  basis: 'flat' | 'metered'
+  mode: TripMode
+  basis: 'flat' | 'metered' | 'hourly'
+  /** Détail par trajet (aller-retour). */
+  legs?: QuoteLeg[]
+  /** Durée réservée (mise à disposition). */
+  hours?: number
   vehicleId: VehicleId
   vehicleName: string
   vehicleCount: number
@@ -186,6 +201,7 @@ export function computeQuote(input: QuoteInput): Quote {
   const { dueNow, balance } = computeDueNow(total)
 
   return {
+    mode: 'oneway',
     basis,
     vehicleId: vehicle.id,
     vehicleName: vehicle.name,
@@ -200,5 +216,136 @@ export function computeQuote(input: QuoteInput): Quote {
     depositPercent: pricingConfig.depositPercent,
     distanceKm: roundMoney(input.distanceKm),
     durationMin: Math.round(input.durationMin),
+  }
+}
+
+/* ------------------------- Aller-retour ------------------------- */
+
+export type ReturnQuoteInput = QuoteInput & { returnDate: string; returnTime: string }
+
+/**
+ * Aller-retour réservé en une fois : chaque trajet est calculé avec ses
+ * propres majorations (nuit, dimanche), les options ne sont comptées qu'une
+ * fois, puis la remise aller-retour s'applique sur le total.
+ */
+export function computeReturnQuote(input: ReturnQuoteInput): Quote {
+  const outbound = computeQuote(input)
+  const inbound = computeQuote({
+    ...input,
+    from: input.to,
+    to: input.from,
+    date: input.returnDate,
+    time: input.returnTime,
+    options: {},
+  })
+  const legs: QuoteLeg[] = [
+    { label: 'Aller', date: input.date, time: input.time, total: outbound.total, surcharges: outbound.surcharges },
+    { label: 'Retour', date: input.returnDate, time: input.returnTime, total: inbound.total, surcharges: inbound.surcharges },
+  ]
+  const lines: QuoteLine[] = [
+    { label: `Aller (${outbound.basis === 'flat' ? 'forfait' : 'compteur'})`, amount: outbound.total },
+    { label: `Retour (${inbound.basis === 'flat' ? 'forfait' : 'compteur'})`, amount: inbound.total },
+  ]
+  let subtotal = outbound.total + inbound.total
+  const pct = pricingConfig.returnTripDiscountPercent
+  if (pct > 0) {
+    const discount = roundMoney((subtotal * pct) / 100)
+    lines.push({ label: `Remise aller-retour (−${pct} %)`, amount: -discount })
+    subtotal -= discount
+  }
+  const total = roundMoney(subtotal)
+  const { dueNow, balance } = computeDueNow(total)
+  return {
+    ...outbound,
+    mode: 'return',
+    legs,
+    lines,
+    surcharges: {
+      night: outbound.surcharges.night || inbound.surcharges.night,
+      sundayHoliday: outbound.surcharges.sundayHoliday || inbound.surcharges.sundayHoliday,
+    },
+    total,
+    dueNow,
+    balance,
+  }
+}
+
+/* --------------------- Mise à disposition --------------------- */
+
+export type HourlyQuoteInput = {
+  from: PlacePoint
+  hours: number
+  date: string
+  time: string
+  passengers: number
+  luggage: number
+  vehicleId: VehicleId
+  options?: Partial<Record<OptionId, number>>
+}
+
+/** Mise à disposition : tarif horaire × durée (minimum applicable), majorations et options. */
+export function computeHourlyQuote(input: HourlyQuoteInput): Quote {
+  const vehicle = getVehicle(input.vehicleId)
+  const vehicleCount = vehiclesNeeded(vehicle, input.passengers, input.luggage)
+  const { pricePerHour, minimumHours, maximumHours } = pricingConfig.hourly
+  const hours = Math.min(maximumHours, Math.max(minimumHours, Math.ceil(input.hours)))
+  const lines: QuoteLine[] = []
+
+  let perVehicle = pricePerHour * hours
+  lines.push({ label: `${hours} h × ${pricePerHour.toFixed(2)} €`, amount: roundMoney(perVehicle) })
+  if (hours > Math.ceil(input.hours)) {
+    lines[0].label += ` (minimum ${minimumHours} h)`
+  }
+  if (vehicle.coefficient !== 1) {
+    const delta = perVehicle * (vehicle.coefficient - 1)
+    lines.push({ label: `${vehicle.name} (×${vehicle.coefficient})`, amount: roundMoney(delta) })
+    perVehicle *= vehicle.coefficient
+  }
+  let subtotal = perVehicle * vehicleCount
+  if (vehicleCount > 1) {
+    lines.push({ label: `× ${vehicleCount} véhicules`, amount: roundMoney(perVehicle * (vehicleCount - 1)) })
+  }
+
+  const hour = Number(input.time.slice(0, 2))
+  const night = Number.isInteger(hour) && isNightHour(hour)
+  const sundayHoliday = isSundayOrHoliday(input.date)
+  const base = subtotal
+  if (night) {
+    const amount = roundMoney((base * pricingConfig.night.surchargePercent) / 100)
+    lines.push({ label: `Majoration de nuit (+${pricingConfig.night.surchargePercent} %)`, amount })
+    subtotal += amount
+  }
+  if (sundayHoliday) {
+    const amount = roundMoney((base * pricingConfig.sundayHoliday.surchargePercent) / 100)
+    lines.push({ label: `Dimanche / jour férié (+${pricingConfig.sundayHoliday.surchargePercent} %)`, amount })
+    subtotal += amount
+  }
+  for (const [id, option] of Object.entries(pricingConfig.options) as [OptionId, { label: string; price: number }][]) {
+    const qty = Math.max(0, Math.floor(input.options?.[id] ?? 0))
+    if (qty > 0) {
+      const amount = roundMoney(option.price * qty)
+      lines.push({ label: qty > 1 ? `${option.label} × ${qty}` : option.label, amount })
+      subtotal += amount
+    }
+  }
+
+  const total = roundMoney(subtotal)
+  const { dueNow, balance } = computeDueNow(total)
+  return {
+    mode: 'hourly',
+    basis: 'hourly',
+    hours,
+    vehicleId: vehicle.id,
+    vehicleName: vehicle.name,
+    vehicleCount,
+    lines,
+    surcharges: { night, sundayHoliday },
+    total,
+    dueNow,
+    balance,
+    paymentMode: pricingConfig.paymentMode,
+    depositPercent: pricingConfig.depositPercent,
+    distanceKm: pricingConfig.hourly.includedKmPerHour * hours,
+    durationMin: hours * 60,
   }
 }

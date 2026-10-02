@@ -62,6 +62,18 @@ export const pricingConfig = {
     minimumFare: 35,
   },
 
+  /** Mise à disposition à l'heure (chauffeur et véhicule restent avec le client). */
+  hourly: {
+    pricePerHour: 75,
+    minimumHours: 3,
+    maximumHours: 12,
+    /** Kilométrage compris par heure ; au-delà, facturation au km (sur place). */
+    includedKmPerHour: 25,
+  },
+
+  /** Remise appliquée sur le total d'un aller-retour réservé en une fois. */
+  returnTripDiscountPercent: 5,
+
   /** Majoration de nuit, appliquée si l'heure de prise en charge est dans [start, end). */
   night: {
     startHour: 22,

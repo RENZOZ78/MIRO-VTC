@@ -1,5 +1,5 @@
 import { firstIssue, jsonError, readJson } from '@/lib/api'
-import { buildQuote, quoteRequestSchema, validatePickupMoment } from '@/lib/booking'
+import { buildQuote, quoteRequestSchema, validateRequestMoments } from '@/lib/booking'
 import { clientIp, rateLimit, tooManyRequests } from '@/lib/rate-limit'
 import { isStripeConfigured } from '@/lib/stripe'
 
@@ -11,7 +11,7 @@ export async function POST(request: Request) {
   const parsed = quoteRequestSchema.safeParse(await readJson(request))
   if (!parsed.success) return jsonError(400, firstIssue(parsed.error))
 
-  const momentError = validatePickupMoment(parsed.data.date, parsed.data.time)
+  const momentError = validateRequestMoments(parsed.data)
   if (momentError) return jsonError(422, momentError)
 
   try {

@@ -9,6 +9,7 @@ import nodemailer, { type Transporter } from 'nodemailer'
 import { siteConfig, isSet } from '@/config/site'
 import type { BookingSummary, ContactRequest } from '@/lib/booking'
 import { formatDateTimeFr, formatDuration, formatKm, formatPrice } from '@/lib/format'
+import { buildBookingIcs } from '@/lib/ics'
 
 export function isSmtpConfigured(): boolean {
   return !!process.env.SMTP_HOST
@@ -53,12 +54,15 @@ export function ownerAddress(): string | null {
 
 export type MailResult = { simulated: boolean; messageId?: string; accepted?: boolean }
 
+export type MailAttachment = { filename: string; content: string; contentType: string }
+
 export async function sendMail(message: {
   to: string
   subject: string
   text: string
   html: string
   replyTo?: string
+  attachments?: MailAttachment[]
 }): Promise<MailResult> {
   const transport = getTransporter()
   const info = await transport.sendMail({ from: fromAddress(), ...message })
@@ -131,20 +135,33 @@ function paymentLine(s: BookingSummary): string {
   }
 }
 
+const modeLabel = (s: BookingSummary) =>
+  s.mode === 'hourly' ? `Mise à disposition ${s.hours ?? ''} h` : s.mode === 'return' ? 'Aller-retour' : 'Aller simple'
+
 function bookingRows(s: BookingSummary): Row[] {
   const rows: Row[] = [
     ['Référence', s.reference],
+    ['Prestation', modeLabel(s)],
     ['Prise en charge', formatDateTimeFr(s.date, s.time)],
-    ['Départ', s.from],
-    ['Arrivée', s.to],
+  ]
+  if (s.mode === 'return' && s.returnDate && s.returnTime) {
+    rows.push(['Retour', formatDateTimeFr(s.returnDate, s.returnTime)])
+  }
+  rows.push(['Départ', s.from])
+  if (s.mode !== 'hourly') rows.push(['Arrivée', s.to])
+  rows.push(
     ['Passagers', `${s.passengers} · ${s.luggage} bagage${s.luggage > 1 ? 's' : ''}`],
     ['Véhicule', s.vehicleCount > 1 ? `${s.vehicleCount} × ${s.vehicleName}` : s.vehicleName],
-  ]
+  )
   if (s.options.length) rows.push(['Options', s.options.join(', ')])
-  rows.push([
-    'Trajet estimé',
-    `${formatKm(s.distanceKm)} · ${formatDuration(s.durationMin)}${s.routeSource === 'estimation' ? ' (estimation)' : ''}`,
-  ])
+  if (s.mode === 'hourly') {
+    rows.push(['Kilométrage compris', formatKm(s.distanceKm)])
+  } else {
+    rows.push([
+      s.mode === 'return' ? 'Trajet estimé (par sens)' : 'Trajet estimé',
+      `${formatKm(s.distanceKm)} · ${formatDuration(s.durationMin)}${s.routeSource === 'estimation' ? ' (estimation)' : ''}`,
+    ])
+  }
   rows.push(['Prix total', `${formatPrice(s.total)} TTC${s.basis === 'flat' ? ' (forfait)' : ''}`])
   rows.push(['Paiement', paymentLine(s)])
   if (s.customer.flightNumber) rows.push(['Vol / train', s.customer.flightNumber])
@@ -165,6 +182,13 @@ export async function sendBookingEmails(s: BookingSummary): Promise<{ customer: 
     `Pour toute question : ${siteConfig.phone.display}.`,
   ]
   const rows = bookingRows(s)
+  const attachments: MailAttachment[] = [
+    {
+      filename: `reservation-${s.reference}.ics`,
+      content: buildBookingIcs(s),
+      contentType: 'text/calendar; charset=utf-8; method=PUBLISH',
+    },
+  ]
 
   const customer = await sendMail({
     to: `${customerName} <${s.customer.email}>`,
@@ -172,6 +196,7 @@ export async function sendBookingEmails(s: BookingSummary): Promise<{ customer: 
     text: renderText(title, intro, rows, outro),
     html: renderHtml({ title, intro, rows, outro }),
     replyTo: ownerAddress() ?? undefined,
+    attachments,
   })
 
   const ownerTo = ownerAddress()
@@ -186,6 +211,7 @@ export async function sendBookingEmails(s: BookingSummary): Promise<{ customer: 
       text: renderText(ownerTitle, ownerIntro, ownerRows, []),
       html: renderHtml({ title: ownerTitle, intro: ownerIntro, rows: ownerRows, outro: [] }),
       replyTo: s.customer.email,
+      attachments,
     })
   } else {
     console.warn('[mail] MAIL_TO non défini : aucune notification exploitant envoyée.')

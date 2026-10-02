@@ -137,3 +137,42 @@ describe('acompte', () => {
     expect(q.paymentMode).toBe(pricingConfig.paymentMode)
   })
 })
+
+describe('aller-retour', () => {
+  it('additionne aller et retour avec leurs majorations et applique la remise', async () => {
+    const { computeReturnQuote } = await import('@/lib/pricing')
+    const q = computeReturnQuote({ ...base, returnDate: '2026-10-11', returnTime: '23:00' }) // retour dimanche nuit
+    expect(q.mode).toBe('return')
+    expect(q.legs?.map((l) => l.total)).toEqual([95, 95 + 19 + 9.5])
+    const brut = 95 + 123.5 // 218,50 € ; remise 5 % = 10,93 €
+    expect(q.total).toBe(Math.round((brut - 10.93) * 100) / 100)
+    expect(q.surcharges).toEqual({ night: true, sundayHoliday: true })
+  })
+
+  it('ne compte les options qu’une fois', async () => {
+    const { computeReturnQuote } = await import('@/lib/pricing')
+    const q = computeReturnQuote({ ...base, returnDate: '2026-10-07', returnTime: '14:00', options: { childSeat: 1 } })
+    expect(q.legs?.[0].total).toBe(105)
+    expect(q.legs?.[1].total).toBe(95)
+  })
+})
+
+describe('mise à disposition', () => {
+  it('applique le tarif horaire et le minimum', async () => {
+    const { computeHourlyQuote } = await import('@/lib/pricing')
+    const { pricePerHour, minimumHours } = pricingConfig.hourly
+    const q = computeHourlyQuote({ ...base, hours: 1 })
+    expect(q.mode).toBe('hourly')
+    expect(q.hours).toBe(minimumHours)
+    expect(q.total).toBe(pricePerHour * minimumHours)
+    const q5 = computeHourlyQuote({ ...base, hours: 5, time: '23:00' })
+    expect(q5.total).toBe(pricePerHour * 5 * 1.2)
+  })
+
+  it('plafonne la durée et multiplie par véhicule', async () => {
+    const { computeHourlyQuote } = await import('@/lib/pricing')
+    const q = computeHourlyQuote({ ...base, hours: 40, passengers: 7 })
+    expect(q.hours).toBe(pricingConfig.hourly.maximumHours)
+    expect(q.vehicleCount).toBe(2)
+  })
+})

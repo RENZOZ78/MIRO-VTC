@@ -89,7 +89,7 @@ describe('référence et métadonnées', () => {
       },
       acceptTerms: true,
     })
-    const quote = computeQuote({ ...request, distanceKm: 31.4, durationMin: 39 })
+    const quote = computeQuote({ ...request, to: request.to!, distanceKm: 31.4, durationMin: 39 })
     const summary = summarizeBooking(request, { quote, route: { distanceKm: 31.4, durationMin: 39, source: 'ign' } }, 'MV-261002-ABCD', 'pending')
     const metadata = summaryToMetadata(summary)
     for (const value of Object.values(metadata)) expect(value.length).toBeLessThanOrEqual(500)
@@ -103,5 +103,23 @@ describe('référence et métadonnées', () => {
       options: ['Siège enfant / rehausseur'],
       customer: { email: 'anna@example.com', flightNumber: 'AF1234', notes: 'Deux valises cabine' },
     })
+  })
+})
+
+describe('modes de trajet', () => {
+  it('exige une arrivée hors mise à disposition, et une durée en mise à disposition', () => {
+    const sansArrivee = { ...validQuote, to: undefined }
+    expect(quoteRequestSchema.safeParse(sansArrivee).success).toBe(false)
+    expect(quoteRequestSchema.safeParse({ ...sansArrivee, mode: 'hourly' }).success).toBe(false)
+    expect(quoteRequestSchema.safeParse({ ...sansArrivee, mode: 'hourly', hours: 4 }).success).toBe(true)
+  })
+
+  it('exige le retour en aller-retour et vérifie qu’il suit l’aller', async () => {
+    const { validateRequestMoments } = await import('@/lib/booking')
+    expect(quoteRequestSchema.safeParse({ ...validQuote, mode: 'return' }).success).toBe(false)
+    const r = quoteRequestSchema.parse({ ...validQuote, mode: 'return', returnDate: '2026-11-12', returnTime: '09:00' })
+    expect(validateRequestMoments(r, new Date('2026-10-02T10:00:00Z'))).toMatch(/30 minutes/)
+    const ok = quoteRequestSchema.parse({ ...validQuote, mode: 'return', returnDate: '2026-11-12', returnTime: '18:00' })
+    expect(validateRequestMoments(ok, new Date('2026-10-02T10:00:00Z'))).toBeNull()
   })
 })

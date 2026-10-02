@@ -10,7 +10,7 @@ import { pricingConfig, type OptionId, type VehicleId } from '@/config/pricing'
 import { siteConfig } from '@/config/site'
 import { parisToUtc } from '@/lib/format'
 import { getRoute, type RouteResult } from '@/lib/geo'
-import { computeQuote, type Quote } from '@/lib/pricing'
+import { computeHourlyQuote, computeQuote, computeReturnQuote, type Quote, type TripMode } from '@/lib/pricing'
 
 // Messages de validation en français.
 z.config(z.locales.fr())
@@ -35,18 +35,42 @@ const optionsSchema = z.object(
   >,
 )
 
-export const quoteRequestSchema = z.object({
-  from: placeSchema,
-  to: placeSchema,
-  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Date invalide'),
-  time: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, 'Heure invalide'),
-  passengers: z.number().int().min(1).max(siteConfig.booking.maxPassengers),
-  luggage: z.number().int().min(0).max(16),
-  vehicleId: z.enum(vehicleIds),
-  options: optionsSchema.default(
-    Object.fromEntries(optionIds.map((id) => [id, 0])) as Record<OptionId, number>,
-  ),
-})
+const dateSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Date invalide')
+const timeSchema = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, 'Heure invalide')
+
+export const tripModes = ['oneway', 'return', 'hourly'] as const satisfies readonly TripMode[]
+
+export const quoteRequestSchema = z
+  .object({
+    mode: z.enum(tripModes).default('oneway'),
+    from: placeSchema,
+    /** Arrivée : requise sauf en mise à disposition. */
+    to: placeSchema.optional(),
+    date: dateSchema,
+    time: timeSchema,
+    /** Aller-retour : date et heure du retour. */
+    returnDate: dateSchema.optional(),
+    returnTime: timeSchema.optional(),
+    /** Mise à disposition : durée en heures. */
+    hours: z.number().int().min(1).max(pricingConfig.hourly.maximumHours).optional(),
+    passengers: z.number().int().min(1).max(siteConfig.booking.maxPassengers),
+    luggage: z.number().int().min(0).max(16),
+    vehicleId: z.enum(vehicleIds),
+    options: optionsSchema.default(
+      Object.fromEntries(optionIds.map((id) => [id, 0])) as Record<OptionId, number>,
+    ),
+  })
+  .superRefine((data, ctx) => {
+    if (data.mode !== 'hourly' && !data.to) {
+      ctx.addIssue({ code: 'custom', path: ['to'], message: 'Adresse d’arrivée requise' })
+    }
+    if (data.mode === 'return' && (!data.returnDate || !data.returnTime)) {
+      ctx.addIssue({ code: 'custom', path: ['returnDate'], message: 'Date et heure du retour requises' })
+    }
+    if (data.mode === 'hourly' && !data.hours) {
+      ctx.addIssue({ code: 'custom', path: ['hours'], message: 'Durée de mise à disposition requise' })
+    }
+  })
 
 export const customerSchema = z.object({
   firstName: z.string().trim().min(2, 'Prénom requis').max(60),
@@ -57,7 +81,7 @@ export const customerSchema = z.object({
   notes: z.string().trim().max(1000).optional(),
 })
 
-export const bookingRequestSchema = quoteRequestSchema.extend({
+export const bookingRequestSchema = quoteRequestSchema.safeExtend({
   customer: customerSchema,
   acceptTerms: z.literal(true, 'Merci d’accepter les conditions générales'),
   /** Champ pot de miel, invisible pour un humain : rempli = robot (traité dans la route). */
@@ -90,24 +114,46 @@ export function validatePickupMoment(date: string, time: string, now = new Date(
   return null
 }
 
-export type QuoteResult = { quote: Quote; route: RouteResult }
+/** Vérifie les dates d'une demande complète (aller, et retour après l'aller). */
+export function validateRequestMoments(request: QuoteRequest, now = new Date()): string | null {
+  const error = validatePickupMoment(request.date, request.time, now)
+  if (error) return error
+  if (request.mode === 'return' && request.returnDate && request.returnTime) {
+    const outbound = parisToUtc(request.date, request.time).getTime()
+    const inbound = parisToUtc(request.returnDate, request.returnTime).getTime()
+    if (Number.isNaN(inbound)) return 'Date ou heure du retour invalide.'
+    if (inbound <= outbound + 30 * 60_000) return 'Le retour doit avoir lieu au moins 30 minutes après l’aller.'
+    const retError = validatePickupMoment(request.returnDate, request.returnTime, now)
+    if (retError) return retError
+  }
+  return null
+}
+
+export type QuoteResult = { quote: Quote; route: RouteResult | null }
 
 /** Itinéraire puis prix, à partir d'une demande validée. */
 export async function buildQuote(request: QuoteRequest): Promise<QuoteResult> {
-  const route = await getRoute(request.from, request.to)
-  const quote = computeQuote({
+  const common = {
     from: request.from,
-    to: request.to,
-    distanceKm: route.distanceKm,
-    durationMin: route.durationMin,
     date: request.date,
     time: request.time,
     passengers: request.passengers,
     luggage: request.luggage,
     vehicleId: request.vehicleId,
     options: request.options,
-  })
-  return { quote, route }
+  }
+  if (request.mode === 'hourly') {
+    const quote = computeHourlyQuote({ ...common, hours: request.hours ?? pricingConfig.hourly.minimumHours })
+    return { quote, route: null }
+  }
+  if (!request.to) throw new Error('Adresse d’arrivée manquante')
+  const route = await getRoute(request.from, request.to)
+  const tripInput = { ...common, to: request.to, distanceKm: route.distanceKm, durationMin: route.durationMin }
+  if (request.mode === 'return' && request.returnDate && request.returnTime) {
+    const quote = computeReturnQuote({ ...tripInput, returnDate: request.returnDate, returnTime: request.returnTime })
+    return { quote, route }
+  }
+  return { quote: computeQuote(tripInput), route }
 }
 
 /** Référence lisible : MV-AAMMJJ-XXXX. */
@@ -126,8 +172,14 @@ export type PaymentStatus = 'onboard' | 'pending' | 'paid' | 'failed'
 export type BookingSummary = {
   reference: string
   createdAt: string
+  mode: TripMode
   date: string
   time: string
+  /** Aller-retour. */
+  returnDate?: string
+  returnTime?: string
+  /** Mise à disposition. */
+  hours?: number
   from: string
   to: string
   passengers: number
@@ -173,10 +225,14 @@ export function summarizeBooking(
   return {
     reference,
     createdAt: createdAt.toISOString(),
+    mode: request.mode,
     date: request.date,
     time: request.time,
+    returnDate: request.mode === 'return' ? request.returnDate : undefined,
+    returnTime: request.mode === 'return' ? request.returnTime : undefined,
+    hours: request.mode === 'hourly' ? quote.hours : undefined,
     from: request.from.label,
-    to: request.to.label,
+    to: request.to?.label ?? '',
     passengers: request.passengers,
     luggage: request.luggage,
     vehicleName: quote.vehicleName,
@@ -184,7 +240,7 @@ export function summarizeBooking(
     options: optionLabels(request.options),
     distanceKm: quote.distanceKm,
     durationMin: quote.durationMin,
-    routeSource: route.source,
+    routeSource: route?.source ?? 'ign',
     basis: quote.basis,
     total: quote.total,
     dueNow: quote.dueNow,
@@ -209,8 +265,12 @@ export function summaryToMetadata(s: BookingSummary): Record<string, string> {
   return {
     reference: s.reference,
     createdAt: s.createdAt,
+    mode: s.mode,
     date: s.date,
     time: s.time,
+    returnDate: s.returnDate ?? '',
+    returnTime: s.returnTime ?? '',
+    hours: s.hours !== undefined ? String(s.hours) : '',
     from: clip(s.from),
     to: clip(s.to),
     passengers: String(s.passengers),
@@ -241,11 +301,16 @@ export function summaryFromMetadata(md: Record<string, string> | null | undefine
     const n = Number(v)
     return Number.isFinite(n) ? n : fallback
   }
+  const mode: TripMode = md.mode === 'return' || md.mode === 'hourly' ? md.mode : 'oneway'
   return {
     reference: md.reference,
     createdAt: md.createdAt ?? new Date().toISOString(),
+    mode,
     date: md.date,
     time: md.time,
+    returnDate: md.returnDate || undefined,
+    returnTime: md.returnTime || undefined,
+    hours: md.hours ? num(md.hours) : undefined,
     from: md.from ?? '',
     to: md.to ?? '',
     passengers: num(md.passengers, 1),

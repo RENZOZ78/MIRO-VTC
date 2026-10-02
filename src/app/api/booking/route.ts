@@ -5,7 +5,7 @@ import {
   buildQuote,
   createReference,
   summarizeBooking,
-  validatePickupMoment,
+  validateRequestMoments,
 } from '@/lib/booking'
 import { sendBookingEmails } from '@/lib/mail'
 import { clientIp, rateLimit, tooManyRequests } from '@/lib/rate-limit'
@@ -30,7 +30,7 @@ export async function POST(request: Request) {
   // Pot de miel rempli : un robot. On répond comme si tout allait bien.
   if (data.website) return Response.json({ mode: 'request', reference: createReference() })
 
-  const momentError = validatePickupMoment(data.date, data.time)
+  const momentError = validateRequestMoments(data)
   if (momentError) return jsonError(422, momentError)
 
   let result
