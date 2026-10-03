@@ -12,7 +12,7 @@ import { pricingConfig } from '@/config/pricing'
 import { siteConfig } from '@/config/site'
 
 export const metadata: Metadata = {
-  alternates: { canonical: '/' },
+  alternates: { canonical: '/', languages: { fr: '/', en: '/en' } },
 }
 
 const faq = [

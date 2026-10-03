@@ -5,6 +5,8 @@ import { useState } from 'react'
 import { AddressInput } from '@/components/AddressInput'
 import { pricingConfig, type OptionId, type VehicleId } from '@/config/pricing'
 import { siteConfig } from '@/config/site'
+import { getDictionary } from '@/i18n/dictionaries'
+import { useLocale } from '@/i18n/locale-context'
 import { formatDateTimeFr, formatDuration, formatKm, formatPrice, todayParis } from '@/lib/format'
 import type { Place, RouteResult } from '@/lib/geo'
 import type { Quote, TripMode } from '@/lib/pricing'
@@ -12,23 +14,18 @@ import type { Quote, TripMode } from '@/lib/pricing'
 type Step = 1 | 2 | 3
 
 type QuoteResponse = { quote: Quote; route: RouteResult | null; online: boolean }
-
-const MODES: { id: TripMode; label: string; hint: string }[] = [
-  { id: 'oneway', label: 'Aller simple', hint: 'Un trajet, prix fixé à l’avance' },
-  { id: 'return', label: 'Aller-retour', hint: `−${pricingConfig.returnTripDiscountPercent} % sur l’ensemble` },
-  { id: 'hourly', label: 'Mise à disposition', hint: `${pricingConfig.hourly.pricePerHour} €/h, ${pricingConfig.hourly.minimumHours} h minimum` },
-]
 type BookingResponse =
   | { mode: 'stripe'; url: string; reference: string }
   | { mode: 'request'; reference: string; simulated?: boolean }
 
-const STEPS: { n: Step; label: string }[] = [
-  { n: 1, label: 'Trajet' },
-  { n: 2, label: 'Véhicule' },
-  { n: 3, label: 'Coordonnées' },
-]
-
+const MODE_IDS: TripMode[] = ['oneway', 'return', 'hourly']
 const optionIds = Object.keys(pricingConfig.options) as OptionId[]
+
+/** Libellés anglais des options (les libellés français sont dans la configuration). */
+const optionLabelsEn: Record<OptionId, string> = {
+  childSeat: 'Child seat / booster',
+  meetAndGreet: 'Meet & greet in the terminal',
+}
 
 async function postJson<T>(url: string, body: unknown): Promise<T> {
   const res = await fetch(url, {
@@ -41,8 +38,20 @@ async function postJson<T>(url: string, body: unknown): Promise<T> {
   return data
 }
 
+/** « jeudi 12 novembre 2026 à 09 h 30 » ou « Thursday 12 November 2026, 09:30 ». */
+function formatWhen(date: string, time: string, locale: 'fr' | 'en'): string {
+  if (locale === 'fr') return formatDateTimeFr(date, time)
+  const d = new Date(`${date}T12:00:00Z`)
+  if (Number.isNaN(d.getTime())) return `${date} ${time}`
+  const day = new Intl.DateTimeFormat('en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC' }).format(d)
+  return `${day}, ${time}`
+}
+
 export function BookingForm({ compact = false }: { compact?: boolean }) {
   const router = useRouter()
+  const locale = useLocale()
+  const t = getDictionary(locale).booking
+  const optionLabel = (id: OptionId) => (locale === 'en' ? optionLabelsEn[id] : pricingConfig.options[id].label)
   const [step, setStep] = useState<Step>(1)
 
   // Étape 1 — trajet
@@ -104,19 +113,15 @@ export function BookingForm({ compact = false }: { compact?: boolean }) {
   async function requestQuote(vehicle: VehicleId = vehicleId): Promise<boolean> {
     const payload = tripPayload(vehicle)
     if (!payload) {
-      setQuoteError(
-        mode === 'hourly'
-          ? 'Sélectionnez une adresse de prise en charge dans la liste proposée.'
-          : 'Sélectionnez une adresse de départ et d’arrivée dans la liste proposée.',
-      )
+      setQuoteError(mode === 'hourly' ? t.errFrom : t.errFromTo)
       return false
     }
     if (!date || !time) {
-      setQuoteError('Indiquez la date et l’heure de prise en charge.')
+      setQuoteError(t.errDate)
       return false
     }
     if (mode === 'return' && (!returnDate || !returnTime)) {
-      setQuoteError('Indiquez la date et l’heure du retour.')
+      setQuoteError(t.errReturn)
       return false
     }
     setQuoteLoading(true)
@@ -164,7 +169,7 @@ export function BookingForm({ compact = false }: { compact?: boolean }) {
         window.location.assign(data.url)
         return
       }
-      router.push(`/reservation/confirmation?ref=${encodeURIComponent(data.reference)}&mode=request`)
+      router.push(`${t.confirmationHref}?ref=${encodeURIComponent(data.reference)}&mode=request`)
     } catch (err) {
       setSubmitError((err as Error).message)
       setSubmitting(false)
@@ -177,44 +182,48 @@ export function BookingForm({ compact = false }: { compact?: boolean }) {
     <div className={`card overflow-hidden ${compact ? '' : 'lg:grid lg:grid-cols-[1fr_360px]'}`}>
       <div className="p-6 sm:p-8">
         <ol className="mb-8 flex items-center gap-3 text-xs font-semibold tracking-[0.2em] uppercase">
-          {STEPS.map((s, i) => (
-            <li key={s.n} className="flex items-center gap-3">
-              <button
-                type="button"
-                disabled={s.n > step}
-                onClick={() => setStep(s.n)}
-                className={`flex items-center gap-2 transition ${
-                  s.n === step ? 'text-gold-2' : s.n < step ? 'text-cream/80 hover:text-gold-2' : 'text-mist-2'
-                }`}
-                aria-current={s.n === step ? 'step' : undefined}
-              >
-                <span
-                  className={`grid h-7 w-7 place-items-center rounded-full border text-[11px] ${
-                    s.n <= step ? 'border-gold text-gold-2' : 'border-line text-mist-2'
+          {t.steps.map((label, i) => {
+            const n = (i + 1) as Step
+            return (
+              <li key={label} className="flex items-center gap-3">
+                <button
+                  type="button"
+                  disabled={n > step}
+                  onClick={() => setStep(n)}
+                  className={`flex items-center gap-2 transition ${
+                    n === step ? 'text-gold-2' : n < step ? 'text-cream/80 hover:text-gold-2' : 'text-mist-2'
                   }`}
+                  aria-current={n === step ? 'step' : undefined}
                 >
-                  {s.n < step ? '✓' : s.n}
-                </span>
-                <span className="hidden sm:inline">{s.label}</span>
-              </button>
-              {i < STEPS.length - 1 && <span className="bg-line h-px w-6 sm:w-10" aria-hidden />}
-            </li>
-          ))}
+                  <span
+                    className={`grid h-7 w-7 place-items-center rounded-full border text-[11px] ${
+                      n <= step ? 'border-gold text-gold-2' : 'border-line text-mist-2'
+                    }`}
+                  >
+                    {n < step ? '✓' : n}
+                  </span>
+                  <span className="hidden sm:inline">{label}</span>
+                </button>
+                {i < t.steps.length - 1 && <span className="bg-line h-px w-6 sm:w-10" aria-hidden />}
+              </li>
+            )
+          })}
         </ol>
 
         {step === 1 && (
           <form onSubmit={goToStep2} noValidate className="space-y-5">
-            <div role="radiogroup" aria-label="Type de prestation" className="grid gap-2 sm:grid-cols-3">
-              {MODES.map((m) => {
-                const selected = m.id === mode
+            <div role="radiogroup" aria-label={t.modeGroup} className="grid gap-2 sm:grid-cols-3">
+              {MODE_IDS.map((id) => {
+                const m = t.modes[id]
+                const selected = id === mode
                 return (
                   <button
-                    key={m.id}
+                    key={id}
                     type="button"
                     role="radio"
                     aria-checked={selected}
                     onClick={() => {
-                      setMode(m.id)
+                      setMode(id)
                       setQuoteError(null)
                     }}
                     className={`rounded-xl border px-4 py-3 text-left transition ${
@@ -232,15 +241,15 @@ export function BookingForm({ compact = false }: { compact?: boolean }) {
             <div className="grid gap-5 md:grid-cols-2">
               <AddressInput
                 id="from"
-                label={mode === 'hourly' ? 'Prise en charge' : 'Départ'}
-                placeholder="Adresse, gare, aéroport…"
+                label={mode === 'hourly' ? t.pickup : t.from}
+                placeholder={t.addressPlaceholder}
                 value={from}
                 onChange={setFrom}
               />
               {mode === 'hourly' ? (
                 <div>
                   <label htmlFor="hours" className="label">
-                    Durée
+                    {t.duration}
                   </label>
                   <select id="hours" className="input" value={hours} onChange={(e) => setHours(Number(e.target.value))}>
                     {Array.from(
@@ -248,25 +257,19 @@ export function BookingForm({ compact = false }: { compact?: boolean }) {
                       (_, i) => i + pricingConfig.hourly.minimumHours,
                     ).map((h) => (
                       <option key={h} value={h}>
-                        {h} heures · {formatPrice(h * pricingConfig.hourly.pricePerHour)}
+                        {h} {t.hours} · {formatPrice(h * pricingConfig.hourly.pricePerHour)}
                       </option>
                     ))}
                   </select>
                 </div>
               ) : (
-                <AddressInput
-                  id="to"
-                  label="Arrivée"
-                  placeholder="Adresse, gare, aéroport…"
-                  value={to}
-                  onChange={setTo}
-                />
+                <AddressInput id="to" label={t.to} placeholder={t.addressPlaceholder} value={to} onChange={setTo} />
               )}
             </div>
             <div className="grid gap-5 sm:grid-cols-2 md:grid-cols-4">
               <div>
                 <label htmlFor="date" className="label">
-                  {mode === 'return' ? 'Date aller' : 'Date'}
+                  {mode === 'return' ? t.dateOut : t.date}
                 </label>
                 <input
                   id="date"
@@ -280,7 +283,7 @@ export function BookingForm({ compact = false }: { compact?: boolean }) {
               </div>
               <div>
                 <label htmlFor="time" className="label">
-                  {mode === 'return' ? 'Heure aller' : 'Heure'}
+                  {mode === 'return' ? t.timeOut : t.time}
                 </label>
                 <input
                   id="time"
@@ -294,7 +297,7 @@ export function BookingForm({ compact = false }: { compact?: boolean }) {
               </div>
               <div>
                 <label htmlFor="passengers" className="label">
-                  Passagers
+                  {t.passengers}
                 </label>
                 <select
                   id="passengers"
@@ -304,24 +307,19 @@ export function BookingForm({ compact = false }: { compact?: boolean }) {
                 >
                   {Array.from({ length: siteConfig.booking.maxPassengers }, (_, i) => i + 1).map((n) => (
                     <option key={n} value={n}>
-                      {n} passager{n > 1 ? 's' : ''}
+                      {t.passenger(n)}
                     </option>
                   ))}
                 </select>
               </div>
               <div>
                 <label htmlFor="luggage" className="label">
-                  Bagages
+                  {t.luggage}
                 </label>
-                <select
-                  id="luggage"
-                  className="input"
-                  value={luggage}
-                  onChange={(e) => setLuggage(Number(e.target.value))}
-                >
+                <select id="luggage" className="input" value={luggage} onChange={(e) => setLuggage(Number(e.target.value))}>
                   {Array.from({ length: 9 }, (_, i) => i).map((n) => (
                     <option key={n} value={n}>
-                      {n} bagage{n > 1 ? 's' : ''}
+                      {t.bag(n)}
                     </option>
                   ))}
                 </select>
@@ -332,7 +330,7 @@ export function BookingForm({ compact = false }: { compact?: boolean }) {
               <div className="grid gap-5 sm:grid-cols-2">
                 <div>
                   <label htmlFor="returnDate" className="label">
-                    Date retour
+                    {t.dateBack}
                   </label>
                   <input
                     id="returnDate"
@@ -346,7 +344,7 @@ export function BookingForm({ compact = false }: { compact?: boolean }) {
                 </div>
                 <div>
                   <label htmlFor="returnTime" className="label">
-                    Heure retour
+                    {t.timeBack}
                   </label>
                   <input
                     id="returnTime"
@@ -362,7 +360,7 @@ export function BookingForm({ compact = false }: { compact?: boolean }) {
             )}
 
             <fieldset className="grid gap-3 sm:grid-cols-2">
-              <legend className="label">Options</legend>
+              <legend className="label">{t.options}</legend>
               {optionIds.map((id) => {
                 const opt = pricingConfig.options[id]
                 const checked = options[id] > 0
@@ -380,7 +378,7 @@ export function BookingForm({ compact = false }: { compact?: boolean }) {
                         checked={checked}
                         onChange={(e) => setOptions({ ...options, [id]: e.target.checked ? 1 : 0 })}
                       />
-                      {opt.label}
+                      {optionLabel(id)}
                     </span>
                     <span className="text-gold-2 font-semibold">+{formatPrice(opt.price)}</span>
                   </label>
@@ -394,11 +392,9 @@ export function BookingForm({ compact = false }: { compact?: boolean }) {
               </p>
             )}
             <div className="flex flex-col gap-3 pt-2 sm:flex-row sm:items-center sm:justify-between">
-              <p className="text-mist text-xs">
-                Prix fixé avant le départ · Réservation au moins {siteConfig.booking.minLeadHours} h à l’avance
-              </p>
+              <p className="text-mist text-xs">{t.fixedPrice}</p>
               <button type="submit" className="btn-gold" disabled={quoteLoading}>
-                {quoteLoading ? 'Calcul du prix…' : 'Voir le prix'}
+                {quoteLoading ? t.computing : t.seePrice}
               </button>
             </div>
           </form>
@@ -429,9 +425,7 @@ export function BookingForm({ compact = false }: { compact?: boolean }) {
                         {quote && quote.vehicleId === v.id && (
                           <p className="font-display text-gold-2 text-3xl">{formatPrice(quote.total)}</p>
                         )}
-                        <p className="text-mist text-xs">
-                          {v.passengers} passagers · {v.luggage} bagages
-                        </p>
+                        <p className="text-mist text-xs">{t.passengersLuggage(v.passengers, v.luggage)}</p>
                       </div>
                     </div>
                     <ul className="text-mist mt-4 flex flex-wrap gap-x-5 gap-y-1 text-xs">
@@ -446,9 +440,7 @@ export function BookingForm({ compact = false }: { compact?: boolean }) {
               })}
             </div>
             {quote && quote.vehicleCount > 1 && (
-              <p className="text-gold-2 text-sm">
-                Pour {passengers} passagers et {luggage} bagages, {quote.vehicleCount} véhicules sont affectés.
-              </p>
+              <p className="text-gold-2 text-sm">{t.twoVehicles(passengers, luggage, quote.vehicleCount)}</p>
             )}
             {quoteError && (
               <p role="alert" className="text-danger text-sm">
@@ -457,10 +449,10 @@ export function BookingForm({ compact = false }: { compact?: boolean }) {
             )}
             <div className="flex items-center justify-between gap-3 pt-2">
               <button type="button" className="btn-ghost" onClick={() => setStep(1)}>
-                Modifier le trajet
+                {t.editTrip}
               </button>
               <button type="button" className="btn-gold" disabled={!quote || quoteLoading} onClick={() => setStep(3)}>
-                Continuer
+                {t.continue}
               </button>
             </div>
           </div>
@@ -469,50 +461,14 @@ export function BookingForm({ compact = false }: { compact?: boolean }) {
         {step === 3 && (
           <form onSubmit={submitBooking} className="space-y-5">
             <div className="grid gap-5 sm:grid-cols-2">
-              <Field
-                id="firstName"
-                label="Prénom"
-                value={customer.firstName}
-                onChange={(v) => setCustomer({ ...customer, firstName: v })}
-                autoComplete="given-name"
-                required
-              />
-              <Field
-                id="lastName"
-                label="Nom"
-                value={customer.lastName}
-                onChange={(v) => setCustomer({ ...customer, lastName: v })}
-                autoComplete="family-name"
-                required
-              />
-              <Field
-                id="email"
-                label="E-mail"
-                type="email"
-                value={customer.email}
-                onChange={(v) => setCustomer({ ...customer, email: v })}
-                autoComplete="email"
-                required
-              />
-              <Field
-                id="phone"
-                label="Téléphone"
-                type="tel"
-                value={customer.phone}
-                onChange={(v) => setCustomer({ ...customer, phone: v })}
-                autoComplete="tel"
-                required
-              />
-              <Field
-                id="flightNumber"
-                label="N° de vol ou de train (facultatif)"
-                value={customer.flightNumber}
-                onChange={(v) => setCustomer({ ...customer, flightNumber: v })}
-                placeholder="AF1234, TGV 8512…"
-              />
+              <Field id="firstName" label={t.firstName} value={customer.firstName} onChange={(v) => setCustomer({ ...customer, firstName: v })} autoComplete="given-name" required />
+              <Field id="lastName" label={t.lastName} value={customer.lastName} onChange={(v) => setCustomer({ ...customer, lastName: v })} autoComplete="family-name" required />
+              <Field id="email" label={t.email} type="email" value={customer.email} onChange={(v) => setCustomer({ ...customer, email: v })} autoComplete="email" required />
+              <Field id="phone" label={t.phone} type="tel" value={customer.phone} onChange={(v) => setCustomer({ ...customer, phone: v })} autoComplete="tel" required />
+              <Field id="flightNumber" label={t.flight} value={customer.flightNumber} onChange={(v) => setCustomer({ ...customer, flightNumber: v })} placeholder={t.flightPlaceholder} />
               <div className="sm:col-span-2">
                 <label htmlFor="notes" className="label">
-                  Remarques (facultatif)
+                  {t.notes}
                 </label>
                 <textarea
                   id="notes"
@@ -520,7 +476,7 @@ export function BookingForm({ compact = false }: { compact?: boolean }) {
                   maxLength={1000}
                   value={customer.notes}
                   onChange={(e) => setCustomer({ ...customer, notes: e.target.value })}
-                  placeholder="Code d’immeuble, siège bébé, étape intermédiaire…"
+                  placeholder={t.notesPlaceholder}
                 />
               </div>
             </div>
@@ -542,13 +498,13 @@ export function BookingForm({ compact = false }: { compact?: boolean }) {
                 required
               />
               <span className="text-mist">
-                J’accepte les{' '}
+                {t.acceptPrefix}{' '}
                 <a href="/cgv" target="_blank" className="text-gold-2 underline-offset-4 hover:underline">
-                  conditions générales de vente
+                  {t.terms}
                 </a>{' '}
-                et la{' '}
+                {t.and}{' '}
                 <a href="/confidentialite" target="_blank" className="text-gold-2 underline-offset-4 hover:underline">
-                  politique de confidentialité
+                  {t.privacy}
                 </a>
                 .
               </span>
@@ -561,14 +517,10 @@ export function BookingForm({ compact = false }: { compact?: boolean }) {
             )}
             <div className="flex flex-col gap-3 pt-2 sm:flex-row sm:items-center sm:justify-between">
               <button type="button" className="btn-ghost" onClick={() => setStep(2)}>
-                Retour
+                {t.back}
               </button>
               <button type="submit" className="btn-gold" disabled={submitting || !acceptTerms}>
-                {submitting
-                  ? 'Envoi…'
-                  : quoteData?.online && quote
-                    ? `Payer ${formatPrice(quote.dueNow)} et réserver`
-                    : 'Confirmer la demande'}
+                {submitting ? t.sending : quoteData?.online && quote ? t.pay(formatPrice(quote.dueNow)) : t.confirm}
               </button>
             </div>
           </form>
@@ -577,39 +529,39 @@ export function BookingForm({ compact = false }: { compact?: boolean }) {
 
       {!compact && (
         <aside className="border-line bg-ink-3/60 border-t p-6 sm:p-8 lg:border-t-0 lg:border-l">
-          <p className="eyebrow">Votre trajet</p>
+          <p className="eyebrow">{t.yourTrip}</p>
           {quote && from && (mode === 'hourly' || to) ? (
             <div className="mt-4 space-y-4 text-sm">
               <p className="text-gold-2 text-xs font-semibold tracking-[0.18em] uppercase">
-                {MODES.find((m) => m.id === quote.mode)?.label}
+                {t.modes[quote.mode].label}
                 {quote.mode === 'hourly' && quote.hours ? ` · ${quote.hours} h` : ''}
               </p>
               <div>
-                <p className="text-mist text-xs">{mode === 'hourly' ? 'Prise en charge' : 'Départ'}</p>
+                <p className="text-mist text-xs">{mode === 'hourly' ? t.pickup : t.from}</p>
                 <p className="text-cream">{from.label}</p>
               </div>
               {mode !== 'hourly' && to && (
                 <div>
-                  <p className="text-mist text-xs">Arrivée</p>
+                  <p className="text-mist text-xs">{t.to}</p>
                   <p className="text-cream">{to.label}</p>
                 </div>
               )}
               <div>
-                <p className="text-mist text-xs">{mode === 'return' ? 'Aller' : 'Prise en charge'}</p>
-                <p className="text-cream">{formatDateTimeFr(date, time)}</p>
+                <p className="text-mist text-xs">{mode === 'return' ? t.outbound : t.pickup}</p>
+                <p className="text-cream">{formatWhen(date, time, locale)}</p>
               </div>
               {mode === 'return' && returnDate && returnTime && (
                 <div>
-                  <p className="text-mist text-xs">Retour</p>
-                  <p className="text-cream">{formatDateTimeFr(returnDate, returnTime)}</p>
+                  <p className="text-mist text-xs">{t.inbound}</p>
+                  <p className="text-cream">{formatWhen(returnDate, returnTime, locale)}</p>
                 </div>
               )}
               <p className="text-mist text-xs">
                 {quote.mode === 'hourly'
-                  ? `${formatKm(quote.distanceKm)} compris`
+                  ? `${formatKm(quote.distanceKm)} ${t.included}`
                   : `${formatKm(quote.distanceKm)} · ${formatDuration(quote.durationMin)}${
-                      quoteData?.route?.source === 'estimation' ? ' (estimation)' : ''
-                    }${quote.mode === 'return' ? ' par sens' : ''}`}{' '}
+                      quoteData?.route?.source === 'estimation' ? ` ${t.estimate}` : ''
+                    }${quote.mode === 'return' ? ` ${t.perLeg}` : ''}`}{' '}
                 · {quote.vehicleCount > 1 ? `${quote.vehicleCount} × ` : ''}
                 {quote.vehicleName}
               </p>
@@ -622,28 +574,26 @@ export function BookingForm({ compact = false }: { compact?: boolean }) {
                 ))}
               </ul>
               <div className="flex items-baseline justify-between">
-                <span className="text-cream font-semibold">Total TTC</span>
+                <span className="text-cream font-semibold">{t.total}</span>
                 <span className="font-display text-gold-2 text-3xl">{formatPrice(quote.total)}</span>
               </div>
-              {quoteData?.online ? (
-                <p className="text-mist text-xs leading-relaxed">
-                  {quote.paymentMode === 'deposit' && quote.balance > 0
-                    ? `Acompte de ${formatPrice(quote.dueNow)} (${quote.depositPercent} %) réglé en ligne par carte, solde de ${formatPrice(quote.balance)} au chauffeur.`
-                    : 'Réglé en ligne par carte, paiement sécurisé Stripe.'}
-                </p>
-              ) : (
-                <p className="text-mist text-xs leading-relaxed">
-                  Règlement au chauffeur, par carte ou en espèces. Prix garanti, sans supplément en cas de trafic.
-                </p>
-              )}
+              <p className="text-mist text-xs leading-relaxed">
+                {quoteData?.online
+                  ? quote.paymentMode === 'deposit' && quote.balance > 0
+                    ? t.depositNote(formatPrice(quote.dueNow), quote.depositPercent, formatPrice(quote.balance))
+                    : t.onlineNote
+                  : t.onboardNote}
+              </p>
             </div>
           ) : (
             <div className="text-mist mt-4 space-y-3 text-sm leading-relaxed">
-              <p>Renseignez votre trajet : le prix s’affiche immédiatement, calculé sur l’itinéraire réel.</p>
+              <p>{t.emptyIntro}</p>
               <ul className="space-y-2">
-                <li className="before:text-gold before:mr-2 before:content-['◆']">Forfaits fixes aéroports et gares</li>
-                <li className="before:text-gold before:mr-2 before:content-['◆']">Suivi des vols, attente comprise</li>
-                <li className="before:text-gold before:mr-2 before:content-['◆']">Annulation gratuite jusqu’à 24 h avant</li>
+                {t.emptyPoints.map((p) => (
+                  <li key={p} className="before:text-gold before:mr-2 before:content-['◆']">
+                    {p}
+                  </li>
+                ))}
               </ul>
             </div>
           )}

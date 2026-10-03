@@ -35,7 +35,9 @@ export const siteConfig = {
     e164: '+33652473799',
   },
   /** Numéro WhatsApp au format international sans « + » ; null pour masquer le bouton. */
-  whatsapp: null as string | null,
+  whatsapp: '33652473799' as string | null,
+  /** Message pré-rempli à l'ouverture de WhatsApp. */
+  whatsappMessage: 'Bonjour MIRO VTC, je souhaite réserver un trajet.',
   /** Adresse de contact affichée sur le site (les e-mails partent de MAIL_FROM, voir .env). */
   email: A_COMPLETER,
 
@@ -100,5 +102,6 @@ export const navigation = [
   { href: '/services', label: 'Services' },
   { href: '/tarifs', label: 'Tarifs' },
   { href: '/vtc/paris', label: 'Destinations' },
+  { href: '/entreprises', label: 'Entreprises' },
   { href: '/contact', label: 'Contact' },
 ] as const

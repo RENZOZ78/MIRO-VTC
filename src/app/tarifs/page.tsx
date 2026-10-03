@@ -10,7 +10,7 @@ export const metadata: Metadata = {
   title: 'Tarifs',
   description:
     'Tarifs chauffeur privé MIRO VTC : forfaits fixes Paris, Roissy-CDG, Orly, Beauvais, Disneyland, La Défense et Versailles ; tarif au compteur transparent ailleurs.',
-  alternates: { canonical: '/tarifs' },
+  alternates: { canonical: '/tarifs', languages: { fr: '/tarifs', en: '/en/pricing' } },
 }
 
 export default function TarifsPage() {

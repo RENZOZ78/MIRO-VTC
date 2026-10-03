@@ -3,6 +3,7 @@ import { Cormorant_Garamond, Manrope } from 'next/font/google'
 import { Footer } from '@/components/Footer'
 import { Header } from '@/components/Header'
 import { JsonLd } from '@/components/JsonLd'
+import { WhatsAppFloating } from '@/components/WhatsAppButton'
 import { isSet, siteConfig } from '@/config/site'
 import './globals.css'
 
@@ -80,6 +81,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <Header />
         <main id="contenu">{children}</main>
         <Footer />
+        <WhatsAppFloating />
         <JsonLd data={localBusiness} />
       </body>
     </html>

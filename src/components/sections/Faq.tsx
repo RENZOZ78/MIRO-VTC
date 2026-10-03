@@ -1,13 +1,15 @@
 import { JsonLd } from '@/components/JsonLd'
+import { getDictionary, type Locale } from '@/i18n/dictionaries'
 
 export type FaqItem = { question: string; answer: string }
 
-export function Faq({ items, title = 'Questions fréquentes' }: { items: FaqItem[]; title?: string }) {
+export function Faq({ items, title, locale = 'fr' }: { items: FaqItem[]; title?: string; locale?: Locale }) {
+  const t = getDictionary(locale)
   return (
     <section className="container-x mt-24">
       <div className="max-w-2xl">
-        <p className="eyebrow">FAQ</p>
-        <h2 className="mt-4 text-4xl sm:text-5xl">{title}</h2>
+        <p className="eyebrow">{t.faq.eyebrow}</p>
+        <h2 className="mt-4 text-4xl sm:text-5xl">{title ?? t.faq.title}</h2>
       </div>
       <div className="border-line mt-10 divide-y border-y">
         {items.map((item) => (

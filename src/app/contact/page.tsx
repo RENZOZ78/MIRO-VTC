@@ -1,15 +1,19 @@
 import type { Metadata } from 'next'
 import { ContactForm } from '@/components/ContactForm'
 import { PageHeader } from '@/components/PageHeader'
+import { WhatsAppLink } from '@/components/WhatsAppButton'
 import { isSet, siteConfig } from '@/config/site'
+import { contactTopics, type ContactTopic } from '@/lib/booking'
 
 export const metadata: Metadata = {
   title: 'Contact',
   description: `Contactez ${siteConfig.name}, chauffeur privé en Île-de-France : devis de mise à disposition, question sur une réservation, demande entreprise.`,
-  alternates: { canonical: '/contact' },
+  alternates: { canonical: '/contact', languages: { fr: '/contact', en: '/en/contact' } },
 }
 
-export default function ContactPage() {
+export default async function ContactPage({ searchParams }: { searchParams: Promise<{ objet?: string }> }) {
+  const { objet } = await searchParams
+  const defaultTopic: ContactTopic = objet && objet in contactTopics ? (objet as ContactTopic) : 'particulier'
   return (
     <>
       <PageHeader
@@ -29,14 +33,9 @@ export default function ContactPage() {
           {siteConfig.whatsapp && (
             <div>
               <p className="eyebrow">WhatsApp</p>
-              <a
-                href={`https://wa.me/${siteConfig.whatsapp}`}
-                className="btn-ghost mt-3"
-                target="_blank"
-                rel="noopener noreferrer"
-              >
-                Écrire sur WhatsApp
-              </a>
+              <div className="mt-3">
+                <WhatsAppLink>Écrire sur WhatsApp</WhatsAppLink>
+              </div>
             </div>
           )}
           <div>
@@ -61,7 +60,7 @@ export default function ContactPage() {
             </ul>
           </div>
         </div>
-        <ContactForm />
+        <ContactForm defaultTopic={defaultTopic} />
       </section>
     </>
   )

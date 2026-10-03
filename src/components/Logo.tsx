@@ -1,6 +1,6 @@
 import { siteConfig } from '@/config/site'
 
-export function Logo({ className = '' }: { className?: string }) {
+export function Logo({ className = '', tagline = 'Chauffeur privé' }: { className?: string; tagline?: string }) {
   return (
     <span className={`inline-flex items-center gap-3 ${className}`}>
       <span
@@ -14,9 +14,7 @@ export function Logo({ className = '' }: { className?: string }) {
         <span className="font-display text-cream text-xl font-semibold tracking-[0.18em]">
           {siteConfig.name}
         </span>
-        <span className="text-mist mt-1 text-[10px] font-medium tracking-[0.3em] uppercase">
-          Chauffeur privé
-        </span>
+        <span className="text-mist mt-1 text-[10px] font-medium tracking-[0.3em] uppercase">{tagline}</span>
       </span>
     </span>
   )

@@ -1,8 +1,11 @@
+import Image from 'next/image'
 import Link from 'next/link'
 import { CarSilhouette } from '@/components/CarSilhouette'
 import { pricingConfig } from '@/config/pricing'
 import { siteConfig } from '@/config/site'
+import { getDictionary, type Locale } from '@/i18n/dictionaries'
 import { formatPrice } from '@/lib/format'
+import { publicImage } from '@/lib/images'
 
 const featured = [
   ['paris', 'cdg'],
@@ -10,13 +13,57 @@ const featured = [
   ['paris', 'disney'],
 ] as const
 
-export function Hero() {
+const copy = {
+  fr: {
+    eyebrow: siteConfig.tagline,
+    title: (
+      <>
+        Le trajet devient <span className="text-gradient-gold italic">un moment</span>.
+      </>
+    ),
+    lead: 'Chauffeur privé à bord d’Audi Q8 hybrides, pour vos transferts aéroports, vos rendez-vous et vos soirées en Île-de-France. Prix fixé avant le départ, réservation en trois étapes.',
+    points: [siteConfig.hours, 'Prix garanti, sans supplément trafic', 'Annulation gratuite jusqu’à 24 h'],
+    fleet: 'Flotte',
+    tagline: pricingConfig.vehicles[0].tagline as string,
+    vehicles: 'véhicules',
+    capacity: (p: number, l: number) => `${p} passagers · ${l} bagages`,
+    note: 'Forfaits par véhicule, hors majorations de nuit et dimanche.',
+  },
+  en: {
+    eyebrow: 'Private chauffeur in the Paris region',
+    title: (
+      <>
+        The journey becomes <span className="text-gradient-gold italic">a moment</span>.
+      </>
+    ),
+    lead: 'Private chauffeur aboard hybrid Audi Q8s for your airport transfers, meetings and evenings across Paris and Île-de-France. Price fixed before departure, booking in three steps.',
+    points: ['7 days a week, 24 h by reservation', 'Guaranteed price, no traffic surcharge', 'Free cancellation up to 24 h'],
+    fleet: 'Fleet',
+    tagline: 'Premium plug-in hybrid SUV · 2026 model year',
+    vehicles: 'vehicles',
+    capacity: (p: number, l: number) => `${p} passengers · ${l} bags`,
+    note: 'Fixed fares per vehicle, excluding night and Sunday surcharges.',
+  },
+}
+
+export function Hero({ locale = 'fr' }: { locale?: Locale }) {
+  const c = copy[locale]
+  const t = getDictionary(locale)
   const zoneLabel = (id: string) => pricingConfig.zones.find((z) => z.id === id)?.label ?? id
   const price = (a: string, b: string) =>
     pricingConfig.flatRates.find(({ zones }) => zones.includes(a) && zones.includes(b))?.price
+  const photo = publicImage('hero')
+  const vehicle = pricingConfig.vehicles[0]
 
   return (
     <section className="relative overflow-hidden pt-32 pb-20 sm:pt-40 sm:pb-28">
+      {photo && (
+        <div aria-hidden className="pointer-events-none absolute inset-0">
+          <Image src={photo.src} alt="" fill priority sizes="100vw" className="object-cover object-center opacity-60" />
+          <div className="from-ink via-ink/85 absolute inset-0 bg-gradient-to-r to-transparent" />
+          <div className="from-ink absolute inset-x-0 bottom-0 h-48 bg-gradient-to-t to-transparent" />
+        </div>
+      )}
       <div
         aria-hidden
         className="pointer-events-none absolute inset-0"
@@ -29,26 +76,23 @@ export function Hero() {
 
       <div className="container-x relative grid items-center gap-14 lg:grid-cols-[1.15fr_0.85fr]">
         <div>
-          <p className="eyebrow animate-rise">{siteConfig.tagline}</p>
-          <h1 className="animate-rise-delay mt-5 text-5xl leading-[1.02] sm:text-6xl lg:text-7xl">
-            Le trajet devient <span className="text-gradient-gold italic">un moment</span>.
-          </h1>
-          <p className="lead animate-rise-delay-2 mt-7 max-w-xl">
-            Chauffeur privé à bord d’Audi Q8 hybrides, pour vos transferts aéroports, vos rendez-vous et vos
-            soirées en Île-de-France. Prix fixé avant le départ, réservation en trois étapes.
-          </p>
+          <p className="eyebrow animate-rise">{c.eyebrow}</p>
+          <h1 className="animate-rise-delay mt-5 text-5xl leading-[1.02] sm:text-6xl lg:text-7xl">{c.title}</h1>
+          <p className="lead animate-rise-delay-2 mt-7 max-w-xl">{c.lead}</p>
           <div className="animate-rise-delay-2 mt-9 flex flex-col gap-3 sm:flex-row sm:items-center">
-            <Link href="/reservation" className="btn-gold">
-              Réserver un trajet
+            <Link href={t.booking.bookingHref} className="btn-gold">
+              {t.header.bookLong}
             </Link>
             <a href={`tel:${siteConfig.phone.e164}`} className="btn-ghost">
               {siteConfig.phone.display}
             </a>
           </div>
           <ul className="text-mist mt-10 flex flex-wrap gap-x-8 gap-y-2 text-xs tracking-wide">
-            <li className="before:text-gold before:mr-2 before:content-['◆']">{siteConfig.hours}</li>
-            <li className="before:text-gold before:mr-2 before:content-['◆']">Prix garanti, sans supplément trafic</li>
-            <li className="before:text-gold before:mr-2 before:content-['◆']">Annulation gratuite jusqu’à 24 h</li>
+            {c.points.map((p) => (
+              <li key={p} className="before:text-gold before:mr-2 before:content-['◆']">
+                {p}
+              </li>
+            ))}
           </ul>
         </div>
 
@@ -57,14 +101,14 @@ export function Hero() {
             <CarSilhouette className="text-gold/70 mx-auto w-full max-w-sm" />
             <div className="mt-6 flex items-end justify-between">
               <div>
-                <p className="eyebrow">Flotte</p>
-                <p className="font-display mt-2 text-3xl">{pricingConfig.vehicles[0].name}</p>
-                <p className="text-mist text-sm">{pricingConfig.vehicles[0].tagline}</p>
+                <p className="eyebrow">{c.fleet}</p>
+                <p className="font-display mt-2 text-3xl">{vehicle.name}</p>
+                <p className="text-mist text-sm">{c.tagline}</p>
               </div>
               <p className="text-mist text-right text-xs">
-                {pricingConfig.vehicles[0].fleetCount} véhicules
+                {vehicle.fleetCount} {c.vehicles}
                 <br />
-                {pricingConfig.vehicles[0].passengers} passagers · {pricingConfig.vehicles[0].luggage} bagages
+                {c.capacity(vehicle.passengers, vehicle.luggage)}
               </p>
             </div>
             <ul className="border-line mt-6 divide-y border-t text-sm">
@@ -77,12 +121,9 @@ export function Hero() {
                 </li>
               ))}
             </ul>
-            <p className="text-mist-2 mt-4 text-[11px]">Forfaits par véhicule, hors majorations de nuit et dimanche.</p>
+            <p className="text-mist-2 mt-4 text-[11px]">{c.note}</p>
           </div>
-          <div
-            aria-hidden
-            className="bg-gold/20 absolute -right-10 -bottom-10 -z-10 h-48 w-48 rounded-full blur-3xl"
-          />
+          <div aria-hidden className="bg-gold/20 absolute -right-10 -bottom-10 -z-10 h-48 w-48 rounded-full blur-3xl" />
         </div>
       </div>
     </section>

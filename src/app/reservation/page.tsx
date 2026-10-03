@@ -6,7 +6,7 @@ import { siteConfig } from '@/config/site'
 export const metadata: Metadata = {
   title: 'Réservation',
   description: `Réservez votre chauffeur privé ${siteConfig.name} en trois étapes : trajet, véhicule, coordonnées. Prix calculé sur l’itinéraire réel et garanti.`,
-  alternates: { canonical: '/reservation' },
+  alternates: { canonical: '/reservation', languages: { fr: '/reservation', en: '/en/booking' } },
 }
 
 export default function ReservationPage() {

@@ -88,7 +88,19 @@ export const bookingRequestSchema = quoteRequestSchema.safeExtend({
   website: z.string().max(200).optional(),
 })
 
+export const contactTopics = {
+  particulier: 'Réservation ou question',
+  entreprise: 'Compte entreprise / conciergerie',
+  disposition: 'Mise à disposition, événement',
+  longue: 'Longue distance',
+  autre: 'Autre demande',
+} as const
+
+export type ContactTopic = keyof typeof contactTopics
+
 export const contactRequestSchema = z.object({
+  topic: z.enum(Object.keys(contactTopics) as [ContactTopic, ...ContactTopic[]]).default('particulier'),
+  company: z.string().trim().max(120).optional(),
   name: z.string().trim().min(2).max(120),
   email: z.email().max(120),
   phone: z.string().trim().regex(PHONE_RE).optional().or(z.literal('')),

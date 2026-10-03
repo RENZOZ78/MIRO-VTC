@@ -7,7 +7,7 @@
  */
 import nodemailer, { type Transporter } from 'nodemailer'
 import { siteConfig, isSet } from '@/config/site'
-import type { BookingSummary, ContactRequest } from '@/lib/booking'
+import { contactTopics, type BookingSummary, type ContactRequest } from '@/lib/booking'
 import { formatDateTimeFr, formatDuration, formatKm, formatPrice } from '@/lib/format'
 import { buildBookingIcs } from '@/lib/ics'
 
@@ -49,6 +49,8 @@ function fromAddress(): string {
 export function ownerAddress(): string | null {
   if (process.env.MAIL_TO) return process.env.MAIL_TO
   if (isSet(siteConfig.email)) return siteConfig.email
+  // En mode simulation, une adresse fictive permet de voir le message dans la console.
+  if (!isSmtpConfigured()) return 'exploitant@simulation.local'
   return null
 }
 
@@ -225,16 +227,18 @@ export async function sendContactEmail(c: ContactRequest): Promise<MailResult | 
     console.warn('[mail] MAIL_TO non défini : message de contact non transmis.')
     return null
   }
-  const title = `Message de ${c.name}`
+  const title = `Message de ${c.name}${c.company ? ` (${c.company})` : ''}`
   const rows: Row[] = [
+    ['Objet', contactTopics[c.topic] ?? c.topic],
     ['Nom', c.name],
+    ...(c.company ? ([['Société', c.company]] as Row[]) : []),
     ['E-mail', c.email],
     ['Téléphone', c.phone || '—'],
     ['Message', c.message],
   ]
   return sendMail({
     to,
-    subject: `${title} — formulaire de contact`,
+    subject: `${title} — ${contactTopics[c.topic] ?? 'formulaire de contact'}`,
     text: renderText(title, 'Nouveau message reçu depuis le site.', rows, []),
     html: renderHtml({ title, intro: 'Nouveau message reçu depuis le site.', rows, outro: [] }),
     replyTo: c.email,

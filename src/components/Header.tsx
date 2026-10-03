@@ -3,8 +3,10 @@
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { useState, useSyncExternalStore } from 'react'
-import { navigation, siteConfig } from '@/config/site'
+import { siteConfig } from '@/config/site'
 import { Logo } from '@/components/Logo'
+import { getDictionary, toLocalePath } from '@/i18n/dictionaries'
+import { useLocale } from '@/i18n/locale-context'
 
 function subscribeScroll(callback: () => void) {
   window.addEventListener('scroll', callback, { passive: true })
@@ -14,6 +16,8 @@ function subscribeScroll(callback: () => void) {
 export function Header() {
   const [open, setOpen] = useState(false)
   const pathname = usePathname()
+  const locale = useLocale()
+  const t = getDictionary(locale)
   const scrolled = useSyncExternalStore(
     subscribeScroll,
     () => window.scrollY > 24,
@@ -27,8 +31,11 @@ export function Header() {
     setOpen(false)
   }
 
+  const homeHref = locale === 'en' ? '/en' : '/'
   const isActive = (href: string) =>
-    href === '/' ? pathname === '/' : pathname.startsWith(href.replace(/\/[^/]+$/, '') || href)
+    href === homeHref ? pathname === homeHref : pathname.startsWith(href.replace(/\/[^/]+$/, '') || href)
+  const otherLocale = locale === 'fr' ? 'en' : 'fr'
+  const switchHref = toLocalePath(pathname, otherLocale)
 
   return (
     <header
@@ -37,12 +44,12 @@ export function Header() {
       }`}
     >
       <div className="container-x flex h-20 items-center justify-between">
-        <Link href="/" aria-label={`${siteConfig.name} — accueil`}>
-          <Logo />
+        <Link href={homeHref} aria-label={`${siteConfig.name} — ${t.header.home}`}>
+          <Logo tagline={t.footer.tagline} />
         </Link>
 
-        <nav aria-label="Navigation principale" className="hidden items-center gap-8 lg:flex">
-          {navigation.map((item) => (
+        <nav aria-label="Navigation" className="hidden items-center gap-7 lg:flex">
+          {t.nav.map((item) => (
             <Link
               key={item.href}
               href={item.href}
@@ -56,11 +63,19 @@ export function Header() {
         </nav>
 
         <div className="hidden items-center gap-3 lg:flex">
+          <Link
+            href={switchHref}
+            hrefLang={otherLocale}
+            aria-label={t.header.switchLabel}
+            className="text-mist hover:text-gold-2 text-xs font-semibold tracking-[0.2em]"
+          >
+            {t.header.switchShort}
+          </Link>
           <a href={`tel:${siteConfig.phone.e164}`} className="btn-ghost">
             {siteConfig.phone.display}
           </a>
-          <Link href="/reservation" className="btn-gold">
-            Réserver
+          <Link href={t.booking.bookingHref} className="btn-gold">
+            {t.header.book}
           </Link>
         </div>
 
@@ -70,7 +85,7 @@ export function Header() {
           className="border-line text-cream grid h-11 w-11 place-items-center rounded-full border lg:hidden"
           aria-expanded={open}
           aria-controls="mobile-menu"
-          aria-label={open ? 'Fermer le menu' : 'Ouvrir le menu'}
+          aria-label={open ? t.header.closeMenu : t.header.openMenu}
         >
           <span className="relative block h-3 w-5">
             <span
@@ -86,7 +101,7 @@ export function Header() {
       {open && (
         <div id="mobile-menu" className="border-line container-x border-t pb-8 lg:hidden">
           <nav aria-label="Navigation mobile" className="flex flex-col py-4">
-            {navigation.map((item) => (
+            {t.nav.map((item) => (
               <Link
                 key={item.href}
                 href={item.href}
@@ -95,13 +110,16 @@ export function Header() {
                 {item.label}
               </Link>
             ))}
+            <Link href={switchHref} hrefLang={otherLocale} className="text-mist hover:text-gold-2 py-4 text-sm">
+              {t.header.switchLabel}
+            </Link>
           </nav>
           <div className="flex flex-col gap-3">
-            <Link href="/reservation" className="btn-gold">
-              Réserver un trajet
+            <Link href={t.booking.bookingHref} className="btn-gold">
+              {t.header.bookLong}
             </Link>
             <a href={`tel:${siteConfig.phone.e164}`} className="btn-ghost">
-              Appeler le {siteConfig.phone.display}
+              {t.header.call} {siteConfig.phone.display}
             </a>
           </div>
         </div>

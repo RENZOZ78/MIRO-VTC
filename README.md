@@ -21,6 +21,13 @@ Next.js 16 (App Router, Turbopack) · TypeScript · Tailwind CSS 4 · sans base 
 - **E-mails SMTP** avec nodemailer (`src/lib/mail.ts`), avec **fichier calendrier `.ics`** joint (client et
   chauffeur). Sans SMTP, les e-mails sont simulés dans la console serveur.
 - Anti-abus : validation zod, limitation de débit en mémoire, champ pot de miel.
+- **Version anglaise** des pages clés sous `/en` (accueil, réservation, tarifs, services, entreprises, contact) :
+  textes partagés dans `src/i18n/dictionaries.ts`, langue déduite de l'URL, balises `hreflang`.
+- **Page Entreprises** (`/entreprises`, `/en/business`) et formulaire de contact avec objet pré-rempli
+  (`/contact?objet=entreprise`).
+- **Bouton WhatsApp** flottant (numéro dans `siteConfig.whatsapp`, `null` pour le masquer).
+- **Photos** : déposer les fichiers dans `public/images/` (voir `public/images/README.md`) ; le site les utilise
+  automatiquement, sinon il affiche ses dégradés et son illustration.
 - `siteConfig.provisoire = true` → site fermé aux moteurs de recherche (robots + meta noindex).
 
 ## Démarrage
