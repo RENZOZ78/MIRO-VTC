@@ -1,5 +1,5 @@
 import type { Metadata, Viewport } from 'next'
-import { Cormorant_Garamond, Manrope } from 'next/font/google'
+import localFont from 'next/font/local'
 import { Footer } from '@/components/Footer'
 import { Header } from '@/components/Header'
 import { JsonLd } from '@/components/JsonLd'
@@ -7,16 +7,20 @@ import { WhatsAppFloating } from '@/components/WhatsAppButton'
 import { isSet, siteConfig } from '@/config/site'
 import './globals.css'
 
-const display = Cormorant_Garamond({
-  subsets: ['latin'],
-  weight: ['300', '400', '500', '600'],
-  style: ['normal', 'italic'],
+// Polices embarquées (src/app/fonts) : le build ne dépend plus d'un téléchargement
+// depuis Google Fonts, qui échouait par intermittence sur l'hébergeur.
+const display = localFont({
+  src: [
+    { path: './fonts/cormorant.woff2', weight: '300 700', style: 'normal' },
+    { path: './fonts/cormorant-italic.woff2', weight: '300 700', style: 'italic' },
+  ],
   variable: '--font-display',
   display: 'swap',
 })
 
-const sans = Manrope({
-  subsets: ['latin'],
+const sans = localFont({
+  src: './fonts/manrope.woff2',
+  weight: '200 800',
   variable: '--font-sans',
   display: 'swap',
 })
