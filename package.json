@@ -6,7 +6,7 @@
   "description": "Site vitrine et réservation en ligne de MIRO VTC — chauffeur privé en Île-de-France.",
   "scripts": {
     "dev": "next dev",
-    "build": "next build",
+    "build": "next build --webpack",
     "start": "next start",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
