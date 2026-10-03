@@ -1,0 +1,177 @@
+@import 'tailwindcss';
+
+@theme {
+  --color-ink: #0a0a0c;
+  --color-ink-2: #111114;
+  --color-ink-3: #18181d;
+  --color-ink-4: #232329;
+  --color-line: rgba(231, 211, 161, 0.14);
+  --color-line-strong: rgba(231, 211, 161, 0.32);
+  --color-gold: #c9a35a;
+  --color-gold-2: #e7d3a1;
+  --color-gold-3: #8f7034;
+  --color-cream: #f4f1ea;
+  --color-mist: #a8a295;
+  --color-mist-2: #6f6a60;
+  --color-danger: #e08a7a;
+  --color-success: #9fd3a8;
+
+  --font-display: var(--font-display), 'Cormorant Garamond', 'Times New Roman', serif;
+  --font-sans: var(--font-sans), 'Manrope', ui-sans-serif, system-ui, sans-serif;
+
+  --shadow-glow: 0 0 0 1px rgba(201, 163, 90, 0.25), 0 30px 80px -30px rgba(201, 163, 90, 0.35);
+  --shadow-card: 0 1px 0 rgba(255, 255, 255, 0.04) inset, 0 20px 50px -30px rgba(0, 0, 0, 0.8);
+
+  --ease-luxe: cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@layer base {
+  html {
+    scroll-behavior: smooth;
+    color-scheme: dark;
+  }
+  body {
+    @apply bg-ink text-cream font-sans antialiased;
+    background-image:
+      radial-gradient(1200px 600px at 50% -10%, rgba(201, 163, 90, 0.12), transparent 60%),
+      radial-gradient(800px 400px at 100% 100%, rgba(201, 163, 90, 0.05), transparent 60%);
+  }
+  ::selection {
+    background: rgba(201, 163, 90, 0.35);
+  }
+  h1,
+  h2,
+  h3 {
+    @apply font-display font-medium tracking-tight;
+    text-wrap: balance;
+  }
+  p {
+    text-wrap: pretty;
+  }
+  input[type='date']::-webkit-calendar-picker-indicator,
+  input[type='time']::-webkit-calendar-picker-indicator {
+    filter: invert(0.8) sepia(0.4);
+    cursor: pointer;
+  }
+  :focus-visible {
+    outline: 2px solid var(--color-gold);
+    outline-offset: 2px;
+  }
+}
+
+@layer components {
+  .container-x {
+    @apply mx-auto w-full max-w-6xl px-5 sm:px-8;
+  }
+  .eyebrow {
+    @apply text-gold text-[11px] font-semibold tracking-[0.32em] uppercase;
+  }
+  .lead {
+    @apply text-mist text-lg leading-relaxed;
+  }
+  .card {
+    @apply bg-ink-2/80 border-line rounded-2xl border backdrop-blur;
+    box-shadow: var(--shadow-card);
+  }
+  .card-hover {
+    @apply transition duration-500;
+    transition-timing-function: var(--ease-luxe);
+  }
+  .card-hover:hover {
+    @apply border-line-strong -translate-y-0.5;
+  }
+  .btn,
+  .btn-gold,
+  .btn-ghost {
+    @apply inline-flex items-center justify-center gap-2 rounded-full px-6 py-3 text-sm font-semibold tracking-wide transition duration-300 select-none disabled:cursor-not-allowed disabled:opacity-50;
+  }
+  .btn-gold {
+    @apply text-ink;
+    background: linear-gradient(135deg, #e7d3a1 0%, #c9a35a 55%, #b08a44 100%);
+    box-shadow:
+      0 10px 30px -12px rgba(201, 163, 90, 0.7),
+      0 0 0 1px rgba(231, 211, 161, 0.4) inset;
+  }
+  .btn-gold:hover:not(:disabled) {
+    filter: brightness(1.06);
+    transform: translateY(-1px);
+  }
+  .btn-ghost {
+    @apply border-line-strong text-cream border hover:border-gold hover:text-gold-2;
+  }
+  .btn-link {
+    @apply text-gold-2 hover:text-gold inline-flex items-center gap-1 text-sm font-semibold underline-offset-4 hover:underline;
+  }
+  .label {
+    @apply text-mist mb-1.5 block text-xs font-semibold tracking-[0.18em] uppercase;
+  }
+  .input {
+    @apply bg-ink-3 border-line text-cream placeholder:text-mist-2 focus:border-gold w-full rounded-xl border px-4 py-3 text-base transition outline-none;
+  }
+  .input:focus {
+    box-shadow: 0 0 0 3px rgba(201, 163, 90, 0.18);
+  }
+  .divider-gold {
+    @apply h-px w-16;
+    background: linear-gradient(90deg, var(--color-gold), transparent);
+  }
+  .prose-legal {
+    @apply text-mist space-y-4 leading-relaxed;
+  }
+  .prose-legal h2 {
+    @apply text-cream mt-10 text-2xl;
+  }
+  .prose-legal h3 {
+    @apply text-cream mt-6 text-xl;
+  }
+  .prose-legal strong {
+    @apply text-cream font-semibold;
+  }
+  .prose-legal ul {
+    @apply list-disc space-y-1 pl-6;
+  }
+  .prose-legal a {
+    @apply text-gold-2 underline-offset-4 hover:underline;
+  }
+  .placeholder {
+    @apply text-gold-2 bg-gold/10 rounded px-1.5 py-0.5 font-mono text-[0.85em];
+  }
+}
+
+@layer utilities {
+  .text-gradient-gold {
+    background: linear-gradient(120deg, #f4e9c8 0%, #c9a35a 45%, #e7d3a1 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+  .hairline {
+    background: linear-gradient(90deg, transparent, var(--color-line-strong), transparent);
+  }
+  .animate-rise {
+    animation: rise 0.9s var(--ease-luxe) both;
+  }
+  .animate-rise-delay {
+    animation: rise 0.9s var(--ease-luxe) 0.15s both;
+  }
+  .animate-rise-delay-2 {
+    animation: rise 0.9s var(--ease-luxe) 0.3s both;
+  }
+  @keyframes rise {
+    from {
+      opacity: 0;
+      transform: translateY(14px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .animate-rise,
+    .animate-rise-delay,
+    .animate-rise-delay-2 {
+      animation: none;
+    }
+  }
+}
